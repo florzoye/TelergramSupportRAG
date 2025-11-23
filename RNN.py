@@ -1,5 +1,6 @@
 import os
 from tqdm import tqdm
+from config import model_path
 
 import torch
 import torch.nn as nn
@@ -109,62 +110,46 @@ class WordsRNN(nn.Module):
         y = self.out(pooled)
         return y
 
+def train(
+    model: WordsRNN,
+    train_loader: data.DataLoader,
+    epochs: int = 20,
+):
+    try:
+        optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.001)
+        loss_func = nn.BCEWithLogitsLoss()
+        model.train()
+        
+        for e in range(epochs):
+            loss_mean = 0
+            lm_count = 0
 
-transformer = SentenceTransformer(
-    "sentence-transformers/all-MiniLM-L6-v2",
-    device="cpu"
-)
+            loop = tqdm(train_loader)
+            for x_train, y_train in loop:
+                predict = model(x_train).squeeze(1)
 
-dataset = PhraseDataset("data/train_data_true",
-                        "data/train_data_false",
-                        transformer)
+                loss = loss_func(predict, y_train)
 
-train_loader = data.DataLoader(
-    dataset,
-    batch_size=8,
-    shuffle=True,
-    collate_fn=collate_fn
-)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
-model = WordsRNN(384, 1)
-optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.001)
-loss_func = nn.BCEWithLogitsLoss()
-epochs = 20
+                lm_count += 1
+                loss_mean = (1/lm_count) * loss.item() + (1 - 1/lm_count) * loss_mean
+                loop.set_description(f"Epoch [{e+1}/{epochs}], loss={loss_mean:.3f}")
 
-
-def train():
-    model.train()
-    
-    for e in range(epochs):
-        loss_mean = 0
-        lm_count = 0
-
-        loop = tqdm(train_loader)
-        for x_train, y_train in loop:
-            predict = model(x_train).squeeze(1)
-
-            loss = loss_func(predict, y_train)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            lm_count += 1
-            loss_mean = (1/lm_count) * loss.item() + (1 - 1/lm_count) * loss_mean
-            loop.set_description(f"Epoch [{e+1}/{epochs}], loss={loss_mean:.3f}")
-
-    torch.save(model.state_dict(), "data/model_rnn_bidir.tar")
+        torch.save(model.state_dict(), "data/model_rnn_bidir.tar")
+        return True
+    except Exception as e:
+        print(f'Ошибка при обучении модели {e}')
+        return False
 
 
-
-def predict(phrase: str):
-    model_path = "data/model_rnn_bidir.tar"
-
-    if not os.path.exists(model_path):
-        print("⚠ Модель не найдена. Запускаю обучение...")
-        train()
-        print("✅ Обучение завершено. Продолжаю предсказание.")
-
+def predict(
+    phrase: str,
+    model: WordsRNN,
+    transformer: SentenceTransformer,
+):
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
 
@@ -196,8 +181,3 @@ def predict(phrase: str):
         p = torch.sigmoid(pred)
 
     return p
-
-
-
-# pred = predict('расскажи историю') 
-# print(f'{pred.item()} = Относиться' if pred < 0.51 else f'{pred.item()} = нет')
