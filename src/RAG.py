@@ -2,7 +2,7 @@ import os
 import glob
 import torch
 import asyncio
-from config import GIGACHAT_KEY, PDF_DIR, CHROMA_DIR, COLLECTION_NAME
+from data.config import GIGACHAT_KEY, PDF_DIR, CHROMA_DIR, COLLECTION_NAME
 
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
@@ -16,7 +16,9 @@ from langchain_gigachat import GigaChat
 from langchain_core.documents import Document
 
  
-def process_pdfs_marker():
+def process_pdfs_marker(
+    embed_model: HuggingFaceEmbeddings
+):
     """
     Обрабатывает PDF c помощью Marker OCR и индексирует в Chroma.
     """
@@ -32,12 +34,6 @@ def process_pdfs_marker():
     print(f"📄 Найдено PDF: {len(pdf_files)}")
 
     converter = PdfConverter(artifact_dict=create_model_dict())
-
-    embed_model = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        model_kwargs={'device': 'cuda 'if torch.cuda.is_available() else 'cpu'},
-        encode_kwargs={'normalize_embeddings': True}
-    )
 
     vector_store = Chroma(
         collection_name=COLLECTION_NAME,
@@ -84,7 +80,11 @@ def process_pdfs_marker():
     return True
 
 
-async def aquery_resp(question: str, k: int = 3):
+async def aquery_resp(
+        embed_model: HuggingFaceEmbeddings,
+        question: str, 
+        k: int = 3,
+):
     """
     Args:
         question: Вопрос пользователя
@@ -93,12 +93,6 @@ async def aquery_resp(question: str, k: int = 3):
     Returns:
         Ответ от GigaChat на основе найденного контекста
     """
-    embed_model = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        model_kwargs={'device': 'cpu'},
-        encode_kwargs={'normalize_embeddings': True}
-    )
-
     vector_store = Chroma(
         collection_name=COLLECTION_NAME,
         embedding_function=embed_model,

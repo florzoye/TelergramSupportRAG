@@ -1,6 +1,6 @@
 import os
 from tqdm import tqdm
-from config import model_path
+from data.config import model_path
 
 import torch
 import torch.nn as nn
