@@ -2,7 +2,7 @@ import os
 import glob
 import torch
 import asyncio
-from data.config import GIGACHAT_KEY, PDF_DIR, CHROMA_DIR, COLLECTION_NAME
+from data.config import PDF_DIR, CHROMA_DIR, COLLECTION_NAME, GIGACHAT_AUTH_KEY, GIGACHAT_SCOPE
 
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
@@ -100,7 +100,8 @@ async def aquery_resp(
     )
 
     llm = GigaChat(
-        credentials=GIGACHAT_KEY,
+        credentials=GIGACHAT_AUTH_KEY,
+        scope=GIGACHAT_SCOPE,
         model="GigaChat-Pro",  
         verify_ssl_certs=False,
         temperature=0.2,
@@ -108,12 +109,12 @@ async def aquery_resp(
     )
 
     prompt = ChatPromptTemplate.from_template("""
-        Ты — интеллектуальный помощник сервиса МОСБИРЖА. 
+        Ты — интеллектуальный помощник сервиса Колизей GYM. 
         Твоя задача — отвечать на вопросы пользователей, используя только предоставленный контекст из документации.
 
         Правила:
         1. Отвечай строго на основе контекста ниже
-        2. Если информации нет в контексте — скажи: "Информация не найдена. Обратитесь в поддержку @support_mosbirzha"
+        2. Если информации нет в контексте — скажи: "Информация не найдена. Обратитесь в поддержку @support_kollizey"
         3. Отвечай кратко, структурированно и по существу
         4. Используй форматирование для удобства чтения
         5. Если нужно, ссылайся на источник из метаданных

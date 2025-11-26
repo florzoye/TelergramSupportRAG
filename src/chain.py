@@ -1,97 +1,182 @@
 import os
 import torch
 import asyncio
-from typing import TypedDict
+from typing import TypedDict, Literal
 from utilits.formatter_print import CustomPrint
 from data.config import model_path, chroma_db_path
 
 from langgraph.graph import StateGraph
+from langgraph.constants import START, END
 
-from model import Model
-from RNN import predict, train
-from RAG import aquery_resp, process_pdfs_marker
+from .model import Model
+from .RNN import predict, train
+from .RAG import aquery_resp, process_pdfs_marker
 
 class State(TypedDict):
-    pass
+    question: str
+    is_relevant: bool | None
+    model_response: str
 
 class SupportRAG:
     def __init__(self):
         self.model: Model = self._load_model()
+        self.workflow = self._build_workflow_sync()
 
     def _load_model(self) -> Model:
-
         model_exists = os.path.exists(model_path)
         chroma_exists = os.path.exists(chroma_db_path) and os.listdir(chroma_db_path)
 
-        if not model_exists:
-            CustomPrint().warning("Модель RNN для классификации не найдена.")
+        rnn = not model_exists
+        rag = not chroma_exists
 
-        if not chroma_exists:
-            CustomPrint().warning("Векторная база отсутствует.")
+        self.model = Model().init_models()
 
-        if not model_exists:
+        if rnn or rag:
             try:
-                CustomPrint().info("Модель не найдена. Запустить обучение? Ctrl+C — отменить")
-                input("Нажмите Enter для продолжения...")
+                self.choose_train(rnn, rag)
             except KeyboardInterrupt:
                 CustomPrint().info("Обучение отменено пользователем.")
                 exit(0)
 
-            m = Model()
-            m.init_models()
-            self.model = m
+        if model_exists:
+            state = torch.load(model_path, map_location=self.model.device)
+            self.model.rnn_model.load_state_dict(state)
+            self.model.rnn_model.eval()
+            CustomPrint().success("RNN модель успешно загружена.")
 
-            ok = self.sync_run_training()
-            if not ok:
-                exit(1)
+        if chroma_exists:
+            CustomPrint().success("Векторная база RAG загружена.")
+        elif rag:
+            pass
 
-        m = Model()
-        state = torch.load(model_path, map_location=m.device)
-        m.rnn_model.load_state_dict(state)
-        m.rnn_model.eval()
+        return self.model
 
-        return m
     
-    def sync_run_training(self) -> bool:
+    def _sync_run_training_rnn(self) -> bool:
         try:
             asyncio.run(self.train_model())
             CustomPrint().success("Обучение модели классификации завершено!")
-
-            asyncio.run(process_pdfs_marker(self.model.embed_model))
+        except Exception as e:
+            CustomPrint().error(f"Ошибка при обучении: {e}")
+            return False
+        
+    def _sync_run_training_rag(self) -> bool:
+        try:
+            process_pdfs_marker(self.model.embed_model)
             CustomPrint().success("Обработка документов для RAG завершена!")
             return True
         except Exception as e:
             CustomPrint().error(f"Ошибка при обучении: {e}")
             return False
 
-    async def train_model(self) -> bool:
-        print("Запуск обучения RNN модели...")
-        status = train(
-            model=self.model.rnn_model,
-            train_loader=self.model.data_loader,
-            epochs=20
-        )
-        return status
-
-    async def classify(self, phrase: str) -> bool:
+    async def _classify(self, phrase: str) -> bool:
         p = predict(
             phrase=phrase,
             model=self.model.rnn_model,
             transformer=self.model.transformer
         )
+        print(p.item())
         return p.item() < 0.51
     
-    async def answer_rag(self, question: str) -> str:
+    async def _answer_rag(self, question: str) -> str:
         return await aquery_resp(
             embed_model=self.model.embed_model,
             question=question
         )
 
-    async def create_workflow(self):
-        pass
+    def choose_train(self, rnn: bool, rag: bool):
+        try:
+            if rnn:
+                CustomPrint().info("Модель классификации не найдена. Запустить обучение? Ctrl+C — отменить")
+                input("Нажмите Enter для продолжения...")
+                self._sync_run_training_rnn()
+            if rag:
+                CustomPrint().info("RAG модель не найдена. Запустить обучение? Ctrl+C — отменить")
+                input("Нажмите Enter для продолжения...")
+                self._sync_run_training_rag()
+        except Exception as e:
+            CustomPrint().error(f'Ошикба во время тренировки моделей - {e}')
+            
+    async def train_model(self) -> bool:
+            print("Запуск обучения RNN модели...")
+            status = train(
+                model=self.model.rnn_model,
+                train_loader=self.model.data_loader,
+                epochs=20
+            )
+            return status
+    
+    async def classify(self, state: State) -> State:
+        is_relevant = await self._classify(state["question"])
+        return {
+            "question": state["question"],
+            "is_relevant": is_relevant,
+            "model_response": ""
+        }
+
+    async def search_relevant_data(self, state: State) -> State:
+        answer = await self._answer_rag(state["question"])
+        return {
+            "question": state["question"],
+            "is_relevant": state["is_relevant"],
+            "model_response": answer
+        }
+
+    async def reject_message(self, state: State) -> State:
+        return {
+            "question": state["question"],
+            "is_relevant": state["is_relevant"],
+            "model_response": "Ваш вопрос не относится к поддерживаемой теме. Пожалуйста, задайте вопрос по теме проекта."
+        }
+
+    def router(self, state: State) -> Literal["search_relevant_data", "reject_message"]:
+        if state["is_relevant"] is True:
+            return "search_relevant_data"
+        return "reject_message"
+
+    def _build_workflow_sync(self):
+        workflow = StateGraph(State)
+
+        workflow.add_node("classify_prompt", self.classify)
+        workflow.add_node("search_relevant_data", self.search_relevant_data)
+        workflow.add_node("reject_message", self.reject_message)
+
+        workflow.add_conditional_edges(
+            "classify_prompt",
+            self.router,
+            {
+                "search_relevant_data": "search_relevant_data",
+                "reject_message": "reject_message"
+            }
+        )
+
+        workflow.add_edge(START, "classify_prompt")
+        workflow.add_edge("search_relevant_data", END)
+        workflow.add_edge("reject_message", END)
+
+        return workflow.compile()
+    
+    async def process_question(self, question: str) -> str:
+        result = await self.workflow.ainvoke({
+            "question": question,
+            "is_relevant": None,
+            "model_response": ""
+        })
+        return result["model_response"]
+    
 
 if __name__ == '__main__':
     rag = SupportRAG()
-    question = "Как изменить пароль от личного кабинета?"
-    answer = asyncio.run(rag.answer_rag(question))
-    print(f"Вопрос: {question}\nОтвет: {answer}")
+
+    async def main():
+        while(True):
+            try:
+                question = str(input('Введите ваш вопрос: '))
+                answer = await rag.process_question(question)
+                print(f"Вопрос: {question}")
+                print(f"Ответ: {answer}")
+            except KeyboardInterrupt:
+                print('Пока')
+                break
+
+    asyncio.run(main())
