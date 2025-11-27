@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from sentence_transformers import SentenceTransformer
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from .RNN import WordsRNN, PhraseDataset, collate_fn
+from src.core.RNN import WordsRNN, PhraseDataset, collate_fn
 
 class Model:
     def __init__(self):

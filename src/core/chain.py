@@ -8,7 +8,7 @@ from data.config import model_path, chroma_db_path
 from langgraph.graph import StateGraph
 from langgraph.constants import START, END
 
-from .model import Model
+from src.models.model import Model
 from .RNN import predict, train
 from .RAG import aquery_resp, process_pdfs_marker
 

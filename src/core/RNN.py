@@ -1,4 +1,3 @@
-import os
 from tqdm import tqdm
 from data.config import model_path
 

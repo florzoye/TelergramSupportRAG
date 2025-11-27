@@ -1,6 +1,5 @@
 import os
 import glob
-import torch
 import asyncio
 from data.config import PDF_DIR, CHROMA_DIR, COLLECTION_NAME, GIGACHAT_AUTH_KEY, GIGACHAT_SCOPE
 
@@ -117,7 +116,6 @@ async def aquery_resp(
         2. Если информации нет в контексте — скажи: "Информация не найдена. Обратитесь в поддержку @support_service"
         3. Отвечай кратко, структурированно и по существу
         4. Используй форматирование для удобства чтения
-        5. Если нужно, ссылайся на источник из метаданных
 
         Контекст из документов:
         {context}
