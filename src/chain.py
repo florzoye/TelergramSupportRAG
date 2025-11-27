@@ -50,7 +50,6 @@ class SupportRAG:
             pass
 
         return self.model
-
     
     def _sync_run_training_rnn(self) -> bool:
         try:
