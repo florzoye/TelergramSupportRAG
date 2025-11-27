@@ -2,6 +2,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 test.py
+*.tar
+*.pdf
+chroma_db
 
 # C extensions
 *.so
