@@ -8,6 +8,7 @@ if os.path.exists(dotenv_path):
 
 GIGACHAT_AUTH_KEY = os.getenv('GIGACHAT_AUTH_KEY')
 GIGACHAT_SCOPE = "GIGACHAT_API_PERS" 
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 
 PDF_DIR = "data"
 CHROMA_DIR = "data/chroma_db"

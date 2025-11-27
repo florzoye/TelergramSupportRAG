@@ -163,19 +163,3 @@ class SupportRAG:
         })
         return result["model_response"]
     
-
-if __name__ == '__main__':
-    rag = SupportRAG()
-
-    async def main():
-        while(True):
-            try:
-                question = str(input('Введите ваш вопрос: '))
-                answer = await rag.process_question(question)
-                print(f"Вопрос: {question}")
-                print(f"Ответ: {answer}")
-            except KeyboardInterrupt:
-                print('Пока')
-                break
-
-    asyncio.run(main())
